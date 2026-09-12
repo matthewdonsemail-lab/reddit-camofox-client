@@ -1,0 +1,1 @@
+"""Domain camofox package."""
