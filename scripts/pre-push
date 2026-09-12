@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+"""Git pre-push hook: block pushes that would export secrets.
+
+Delegates to scripts/secret_scan.py. Install: this file lives at
+.git/hooks/pre-push (not committed; per-clone setup). Recreate with:
+    cp scripts/pre-push .git/hooks/pre-push
+"""
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent  # .git/hooks -> repo root
+SCRIPT = ROOT / "scripts" / "secret_scan.py"
+
+result = subprocess.run([sys.executable, str(SCRIPT)], cwd=ROOT)
+sys.exit(result.returncode)
