@@ -77,3 +77,13 @@ python -m pytest tests/ -q
 python scripts/smoke_test.py
 uvicorn reddit_camofox_client.api.app:app --port 8001
 ```
+
+Live smoke test posts a <=5-word comment to r/gtmengineering
+(dry run by default); agent conventions live in
+[`AGENTS.md`](AGENTS.md):
+
+```bash
+# .env.local: REDDIT_COOKIES_FILE=state/cookies.json
+python scripts/reddit_smoke_comment.py            # dry run
+python scripts/reddit_smoke_comment.py --live     # posts for real
+```
