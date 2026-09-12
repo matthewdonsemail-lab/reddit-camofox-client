@@ -32,6 +32,10 @@ Cookies travel per request (no server-side session store). Bearer key
 optional via `REDDIT_API_KEY`. Webhook fan-out via `POSTS_WEBHOOK_URL`
 (fallback `REDDIT_WEBHOOK_URL`).
 
+> Auth can be confusing here: `REDDIT_API_KEY` guards **our** API, it is
+> not Reddit auth. Reddit auth is the per-request **cookie jar**
+> (`token_v2` JWT). Full story: [`docs/reddit-auth.md`](docs/reddit-auth.md).
+
 ## The 5 actions
 
 | action type | handler | input | output / event |
