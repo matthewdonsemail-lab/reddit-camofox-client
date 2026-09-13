@@ -68,8 +68,13 @@ python scripts/reddit_smoke_comment.py --live     # posts "<=5 words" for real
 
 `--live` refuses anonymous jars and comments over 5 words.
 
-## Human motion (ported from ui-kit video-agent)
+## Outbound writing rule
 
+All Reddit-posted text follows `docs/writing-convention.md`: all
+lowercase, no commas, light natural typos, still coherent. Never
+"fix" outbound copy in review. Check every `--live` string against it.
+
+## Human motion (ported from ui-kit video-agent)
 `domain_camofox/motion.py` (bell-curve planner) + `scroll.py`
 (`human_scroll_by`, `scroll_to_selector`) are ported from
 `../ui-kit/scripts/video-agent/src/capability/` (`scroll_math.py`,
@@ -83,6 +88,15 @@ python scripts/reddit_smoke_comment.py --live     # posts "<=5 words" for real
 - Read actions ease ~65% viewport before extraction (lazy-load).
 - Motion math stays pure in `motion.py` so `tests/test_motion.py` runs
   browser-free. No recording/idle-drift loop here (video-agent only).
+
+## Ease-hover-act (mandatory for every browser act)
+
+Every fill/click routes through `fill_first`/`click_first`, which run
+`reach()`: trajectory scroll into view (`scroll_to_selector`, never an
+instant jump), hover the element center (`hover_locator`), then act.
+Raw `locator.click()`/`fill()` and `scroll_into_view_if_needed` as
+primary motion are banned outside `domain_camofox/interactions.py`.
+`tests/test_interactions.py` proves the order with a fake page.
 
 ## Checks before push
 

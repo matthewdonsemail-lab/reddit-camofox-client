@@ -24,7 +24,7 @@ sys.path.insert(0, "src")
 
 SUBREDDIT = "gtmengineering"
 MAX_WORDS = 5
-DEFAULT_COMMENT = "Great insights, thanks for sharing"
+DEFAULT_COMMENT = "great stuff thanks for sharing"
 
 
 def load_env_file(path: Path) -> dict[str, str]:
@@ -129,39 +129,51 @@ async def main() -> int:
 
         await page.goto(post_url, wait_until="domcontentloaded")
         try:
-            await page.wait_for_load_state("networkidle", timeout=15_000)
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        try:
+            # Ease down to trigger lazy-mounted comment controls.
+            from reddit_camofox_client.domain_camofox.constants import SCROLL_VIEWPORT_FRACTION
+            from reddit_camofox_client.domain_camofox.scroll import human_scroll_by
+
+            vp = page.viewport_size or {"height": 800}
+            await human_scroll_by(page, vp["height"] * SCROLL_VIEWPORT_FRACTION)
         except Exception:
             pass
 
-        composer = None
-        for sel in ["div[contenteditable='true']", "textarea[placeholder*='omment' i]", "shreddit-composer"]:
-            try:
-                loc = page.locator(sel).first
-                if await loc.count() > 0:
-                    composer = loc
-                    print(f"composer found: {sel}")
-                    break
-            except Exception:
-                continue
-        if composer is None:
+        from reddit_camofox_client.domain_camofox.interactions import click_first, fill_first
+
+        composer_sels = ["div[contenteditable='true']", "textarea[placeholder*='omment' i]", "shreddit-composer"]
+        reply_sels = ["button:has-text('Reply')"]
+
+        async def present(sels: list) -> str | None:
+            for sel in sels:
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0:
+                        return sel
+                except Exception:
+                    continue
+            return None
+
+        composer = await present(composer_sels)
+        reply_btn = await present(reply_sels)
+        print(f"composer in DOM: {composer} | reply button: {reply_btn}")
+        if composer is None and reply_btn is None:
             raise SystemExit("comment composer not found (login wall or layout change?)")
 
         if not args.live:
             print(f"DRY RUN: would comment ({len(words)} words): {args.comment!r}")
             return 0
 
-        await composer.click()
-        await composer.fill(args.comment)
-        posted = False
-        for sel in ["button:has-text('Comment')", "button[type='submit']"]:
-            try:
-                btn = page.locator(sel).first
-                if await btn.count() > 0:
-                    await btn.click()
-                    posted = True
-                    break
-            except Exception:
-                continue
+        # Human path: ease -> hover -> click Reply to mount the composer,
+        # then ease -> hover -> fill, then ease -> hover -> submit.
+        if not await click_first(page, reply_sels):
+            print("note: reply button not clickable, trying composer directly")
+        if not await fill_first(page, composer_sels, args.comment):
+            raise SystemExit("could not fill composer via human path")
+        posted = await click_first(page, ["button:has-text('Comment')", "button[type='submit']"])
         print(f"submitted: {posted} | url: {page.url}")
         return 0 if posted else 1
     finally:
