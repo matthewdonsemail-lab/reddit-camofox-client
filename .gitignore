@@ -9,4 +9,5 @@ __pycache__/
 state/
 state/cookies.json
 cookies.json
+.playwright-cli/
 *.db

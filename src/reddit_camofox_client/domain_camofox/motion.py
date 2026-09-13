@@ -62,6 +62,7 @@ def human_scroll_trajectory(
     distance: float,
     *,
     seed: int | None = None,
+    precise: bool = False,
 ) -> list[ScrollStep]:
     """Bell-curve scroll plan with overshoot and recoil.
 
@@ -69,6 +70,10 @@ def human_scroll_trajectory(
     short flicks, smaller on long scrolls), then a shorter reverse phase
     recoils back to the target. Sparse mid-scroll pauses (never in the
     recoil) keep it from reading as a metronome.
+
+    precise=True skips overshoot/recoil: when landing ON a known ref,
+    extra travel blows past small targets and the recoil loses them.
+    Travel scrolls (mounting lazy content) keep the full motion.
     """
     rng = random.Random(seed)
     if not distance:
@@ -76,6 +81,10 @@ def human_scroll_trajectory(
 
     direction = 1 if distance > 0 else -1
     abs_dist = abs(distance)
+
+    if precise:
+        # Land exactly: single forward bell, no overshoot, no recoil.
+        return _bell_phase(distance, rng=rng)
 
     short_overshoot = 0.25
     long_overshoot = 0.03

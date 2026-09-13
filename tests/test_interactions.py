@@ -49,7 +49,7 @@ class FakeLocator:
     async def scroll_into_view_if_needed(self, **kwargs):
         self.log.append("jump")
 
-    async def fill(self, value):
+    async def fill(self, value, **kwargs):
         self.log.append("fill")
 
     async def click(self, **kwargs):
@@ -101,3 +101,43 @@ def test_click_follows_ease_hover_act():
     page = FakePage(log)
     assert run(interactions.click_first(page, ["button"])) is True
     _assert_ease_hover_act(log, "click")
+
+
+def test_ref_receipt_printed_and_traced(capsys):
+    interactions.clear_ref_traces()
+    log: list = []
+    page = FakePage(log)
+    assert run(interactions.fill_first(page, ["textarea"], "hi")) is True
+    out = capsys.readouterr().out
+    assert "[REF_TRACE]" in out
+    assert "'selector': 'textarea'" in out
+    traces = interactions.get_ref_traces()
+    assert len(traces) == 1
+    assert traces[0]["selector"] == "textarea"
+    assert traces[0]["dwell_ms"] >= 140
+    interactions.clear_ref_traces()
+
+
+class NoBoxLocator(FakeLocator):
+    async def bounding_box(self):
+        return None
+
+
+class NoBoxPage(FakePage):
+    def locator(self, selector):
+        return NoBoxLocator(self.log)
+
+
+def test_enforcement_aborts_without_box(monkeypatch):
+    monkeypatch.setattr(interactions, "ENFORCE_PRIMITIVES", True)
+    log: list = []
+    page = NoBoxPage(log)
+    assert run(interactions.fill_first(page, ["textarea"], "hi")) is False
+
+
+def test_relaxed_mode_tolerates_missing_box(monkeypatch):
+    monkeypatch.setattr(interactions, "ENFORCE_PRIMITIVES", False)
+    log: list = []
+    page = NoBoxPage(log)
+    # No box and no jump fallback target: still False, but must not raise.
+    assert run(interactions.fill_first(page, ["textarea"], "hi")) is False

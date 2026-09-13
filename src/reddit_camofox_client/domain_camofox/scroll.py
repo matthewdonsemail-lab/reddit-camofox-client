@@ -41,9 +41,13 @@ async def walk_segments_page(page: Any, steps: list[ScrollStep]) -> None:
         await asyncio.sleep(step.delay_ms / 1000)
 
 
-async def human_scroll_by(page: Any, distance: float, *, seed: int | None = None) -> None:
-    """Scroll the page by distance px along a human trajectory."""
-    steps = human_scroll_trajectory(distance, seed=seed)
+async def human_scroll_by(page: Any, distance: float, *, seed: int | None = None, precise: bool = False) -> None:
+    """Scroll the page by distance px along a human trajectory.
+
+    precise=True lands exactly (no overshoot/recoil) for final
+    approaches onto known refs; travel scrolls keep full motion.
+    """
+    steps = human_scroll_trajectory(distance, seed=seed, precise=precise)
     if not steps:
         return
     await walk_segments_page(page, steps)
@@ -148,8 +152,7 @@ async def scroll_to_selector(page: Any, selector: str, *, seed: int | None = Non
             before = geom["scrollTop"]
             max_scroll = max(0, geom["scrollHeight"] - geom["clientHeight"])
             target_y = await owner_loc.evaluate(
-                """(container) => {
-                    const el = arguments[1];
+                """(container, el) => {
                     const cRect = container.getBoundingClientRect();
                     const eRect = el.getBoundingClientRect();
                     const absStart = (eRect.top - cRect.top) + container.scrollTop;
@@ -161,11 +164,17 @@ async def scroll_to_selector(page: Any, selector: str, *, seed: int | None = Non
     target_y = min(target_y, max_scroll)
     distance = target_y - before
 
-    steps = human_scroll_trajectory(distance, seed=seed)
+    steps = human_scroll_trajectory(distance, seed=seed, precise=True)
     if not steps:
         after = before
     elif is_window:
         await walk_segments_page(page, steps)
+        # Final sub-pixel correction: center the ref after the human
+        # travel. Correction only, never the primary motion.
+        try:
+            await locator.evaluate("el => el.scrollIntoView({block: 'center'})")
+        except Exception:
+            pass
         after = await page.evaluate("window.scrollY")
     else:
         await _preposition_mouse(page, geom.get("hoverX"), geom.get("hoverY"))
@@ -180,14 +189,15 @@ async def scroll_to_selector(page: Any, selector: str, *, seed: int | None = Non
     if is_window:
         visible = await locator.evaluate("""
             el => {
+                // Intersects the viewport (Playwright toBeInViewport): fully
+                // on-screen is too strict under sticky headers/sidebars.
                 const r = el.getBoundingClientRect();
-                return r.top >= 0 && r.bottom <= window.innerHeight && r.height > 0;
+                return r.top < window.innerHeight && r.bottom > 0 && r.height > 0;
             }
         """)
     else:
         visible = await owner_loc.evaluate(
-            """(container) => {
-                const el = arguments[1];
+            """(container, el) => {
                 const r = el.getBoundingClientRect();
                 const cR = container.getBoundingClientRect();
                 return r.top >= cR.top && r.bottom <= cR.bottom && r.height > 0;

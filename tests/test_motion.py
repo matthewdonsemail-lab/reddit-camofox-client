@@ -31,3 +31,12 @@ def test_short_flick_is_fast():
     flick_ms = sum(s.delay_ms for s in flick)
     assert flick_ms < sum(s.delay_ms for s in crawl)
     assert len(flick) < len(crawl)
+
+
+def test_precise_landing_no_recoil():
+    for distance in (300, -800, 2500):
+        steps = human_scroll_trajectory(distance, seed=9, precise=True)
+        assert steps
+        deltas = [s.delta_y for s in steps]
+        assert all((d >= 0) == (distance >= 0) for d in deltas)
+        assert abs(sum(deltas) - distance) < 1e-6

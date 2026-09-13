@@ -1,7 +1,12 @@
 """comments.reply (domain_posts.reply): reply to a post or parent comment."""
 from __future__ import annotations
 from reddit_camofox_client.domain_actions.envelope import ActionEnvelope
-from reddit_camofox_client.domain_camofox.interactions import click_first, fill_first
+from reddit_camofox_client.domain_camofox.interactions import (
+    await_mount,
+    click_first,
+    fill_first,
+    fill_focused,
+)
 from reddit_camofox_client.domain_camofox.selectors import COMMENT_BOX, REPLY_BUTTON
 from reddit_camofox_client.domain_posts.schemas import PostReplyInput
 
@@ -20,8 +25,13 @@ class ReplyAction:
         try:
             target = {"permalink": f"/comments/{input_data.post_id}"} if input_data.post_id else {}
             page = await session.open_surface("reddit_post", target)
-            await click_first(page, REPLY_BUTTON)
+            # Comments lazy-mount on scroll; ease down until Reply exists.
+            mounted = await await_mount(page, REPLY_BUTTON)
+            clicked = await click_first(page, [mounted] if mounted else REPLY_BUTTON)
             filled = await fill_first(page, COMMENT_BOX, input_data.text)
+            if not filled:
+                # Shadow-tree composer focused but unmatched: type as a user would.
+                filled = await fill_focused(page, input_data.text)
             posted = await click_first(page, ["button:has-text('Comment')", "button[type='submit']"])
             fresh: list[dict] = []
             try:

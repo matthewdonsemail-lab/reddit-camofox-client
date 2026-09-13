@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -85,7 +86,22 @@ async def main() -> int:
     parser.add_argument("--env-file", default=".env.local")
     parser.add_argument("--comment", default=DEFAULT_COMMENT)
     parser.add_argument("--live", action="store_true", help="actually submit the comment")
+    parser.add_argument("--enforce-primitives", action="store_true", help="force CAMOFOX_ENFORCE_PRIMITIVES=1")
+    parser.add_argument("--no-enforce-primitives", action="store_true", help="force CAMOFOX_ENFORCE_PRIMITIVES=0")
+    parser.add_argument("--hold-secs", type=float, default=15, help="dry-run: hold browser open this long before closing")
+    parser.add_argument("--type-delay-ms", type=float, default=30, help="dry-run: per-char typing delay so motion is visible")
     args = parser.parse_args()
+
+    # Flags are read at domain import time, so apply .env.local + CLI first.
+    root = Path(__file__).resolve().parent.parent
+    env = load_env_file(root / args.env_file)
+    for key in ("CAMOFOX_ENFORCE_PRIMITIVES", "CAMOFOX_PRINT_REFS"):
+        if key in env:
+            os.environ.setdefault(key, env[key])
+    if args.enforce_primitives:
+        os.environ["CAMOFOX_ENFORCE_PRIMITIVES"] = "1"
+    if args.no_enforce_primitives:
+        os.environ["CAMOFOX_ENFORCE_PRIMITIVES"] = "0"
 
     words = args.comment.split()
     if len(words) > MAX_WORDS:
@@ -94,8 +110,6 @@ async def main() -> int:
     from reddit_camofox_client.domain_camofox.cookies import from_browser_export, is_logged_in_jar
     from reddit_camofox_client.domain_camofox.session_manager import CamofoxSessionManager
 
-    root = Path(__file__).resolve().parent.parent
-    env = load_env_file(root / args.env_file)
     raw = load_jar(env, root)
 
     # Browser-export shape (expirationDate/storeId) -> Playwright shape; else passthrough.
@@ -142,10 +156,14 @@ async def main() -> int:
         except Exception:
             pass
 
-        from reddit_camofox_client.domain_camofox.interactions import click_first, fill_first
+        from reddit_camofox_client.domain_camofox.interactions import await_mount, click_first, fill_first, fill_focused
 
         composer_sels = ["div[contenteditable='true']", "textarea[placeholder*='omment' i]", "shreddit-composer"]
-        reply_sels = ["button:has-text('Reply')"]
+        reply_sels = ["shreddit-comment-tree button:has-text('Reply')", "button:has-text('Reply')"]
+
+        # Comments lazy-mount on scroll: ease down until Reply exists.
+        mounted = await await_mount(page, reply_sels)
+        print(f"reply mounted: {mounted}")
 
         async def present(sels: list) -> str | None:
             for sel in sels:
@@ -164,7 +182,31 @@ async def main() -> int:
             raise SystemExit("comment composer not found (login wall or layout change?)")
 
         if not args.live:
-            print(f"DRY RUN: would comment ({len(words)} words): {args.comment!r}")
+            # Visible rehearsal: same human path as live (ease -> hover ->
+            # Reply -> ease -> hover -> type), but never submit. Hold the
+            # browser open afterwards so the run can be watched.
+            print("REHEARSE: reaching reply button...")
+            reply_clicked = await click_first(page, reply_sels)
+            print(f"REHEARSE: reply clicked={reply_clicked}")
+            for sel in composer_sels + ["[role='textbox']", "faceplate-textarea-input", "shreddit-composer:focus-within"]:
+                try:
+                    loc = page.locator(sel)
+                    n = await loc.count()
+                    vis = await loc.first.is_visible() if n else False
+                    print(f"REHEARSE: post-click {n} x vis={vis}  {sel}")
+                except Exception as e:
+                    print(f"REHEARSE: post-click ERR {sel}: {type(e).__name__}")
+            print("REHEARSE: typing comment (not submitting)...")
+            typed = await fill_first(page, composer_sels, args.comment, typing_delay_ms=args.type_delay_ms)
+            via = "selector"
+            if not typed:
+                typed = await fill_focused(page, args.comment, typing_delay_ms=args.type_delay_ms)
+                via = "focused-keyboard"
+            print(f"REHEARSE: typed={typed} via={via} ({len(words)} words): {args.comment!r}")
+            if args.hold_secs > 0:
+                print(f"HOLD: browser stays open {args.hold_secs:g}s for inspection (nothing will be submitted)...")
+                await asyncio.sleep(args.hold_secs)
+            print("DRY RUN complete: composer exercised, nothing submitted.")
             return 0
 
         # Human path: ease -> hover -> click Reply to mount the composer,
@@ -172,7 +214,8 @@ async def main() -> int:
         if not await click_first(page, reply_sels):
             print("note: reply button not clickable, trying composer directly")
         if not await fill_first(page, composer_sels, args.comment):
-            raise SystemExit("could not fill composer via human path")
+            if not await fill_focused(page, args.comment):
+                raise SystemExit("could not fill composer via human path")
         posted = await click_first(page, ["button:has-text('Comment')", "button[type='submit']"])
         print(f"submitted: {posted} | url: {page.url}")
         return 0 if posted else 1

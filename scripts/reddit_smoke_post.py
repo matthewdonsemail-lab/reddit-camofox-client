@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -58,7 +59,20 @@ async def main() -> int:
     parser.add_argument("--body", default="")
     parser.add_argument("--body-file", default=None)
     parser.add_argument("--live", action="store_true", help="actually submit the post")
+    parser.add_argument("--enforce-primitives", action="store_true", help="force CAMOFOX_ENFORCE_PRIMITIVES=1")
+    parser.add_argument("--no-enforce-primitives", action="store_true", help="force CAMOFOX_ENFORCE_PRIMITIVES=0")
     args = parser.parse_args()
+
+    # Flags are read at domain import time, so apply .env.local + CLI first.
+    root = Path(__file__).resolve().parent.parent
+    env = load_env_file(root / args.env_file)
+    for key in ("CAMOFOX_ENFORCE_PRIMITIVES", "CAMOFOX_PRINT_REFS"):
+        if key in env:
+            os.environ.setdefault(key, env[key])
+    if args.enforce_primitives:
+        os.environ["CAMOFOX_ENFORCE_PRIMITIVES"] = "1"
+    if args.no_enforce_primitives:
+        os.environ["CAMOFOX_ENFORCE_PRIMITIVES"] = "0"
 
     body = args.body
     if args.body_file:
@@ -75,8 +89,6 @@ async def main() -> int:
     from reddit_camofox_client.domain_events.emitter import InMemoryEventEmitter
     from reddit_camofox_client.domain_posts.submit import SubmitAction
 
-    root = Path(__file__).resolve().parent.parent
-    env = load_env_file(root / args.env_file)
     raw = load_jar(env, root)
     if raw and any("expirationDate" in c or "storeId" in c for c in raw if isinstance(c, dict)):
         jar = from_browser_export(raw)
