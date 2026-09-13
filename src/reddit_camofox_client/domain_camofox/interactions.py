@@ -57,7 +57,7 @@ async def fill_first(page: Any, selectors: list[str], value: str) -> bool:
     for sel in selectors:
         try:
             loc = page.locator(sel).first
-            if await loc.count() > 0:
+            if await loc.count() > 0 and await loc.is_visible():
                 await hover_locator(page, loc)
                 await loc.fill(value)
                 return True
@@ -70,7 +70,7 @@ async def click_first(page: Any, selectors: list[str]) -> bool:
     for sel in selectors:
         try:
             loc = page.locator(sel).first
-            if await loc.count() > 0:
+            if await loc.count() > 0 and await loc.is_visible():
                 await hover_locator(page, loc)
                 await loc.click(timeout=5000)
                 return True
