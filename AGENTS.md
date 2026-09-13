@@ -68,6 +68,22 @@ python scripts/reddit_smoke_comment.py --live     # posts "<=5 words" for real
 
 `--live` refuses anonymous jars and comments over 5 words.
 
+## Human motion (ported from ui-kit video-agent)
+
+`domain_camofox/motion.py` (bell-curve planner) + `scroll.py`
+(`human_scroll_by`, `scroll_to_selector`) are ported from
+`../ui-kit/scripts/video-agent/src/capability/` (`scroll_math.py`,
+`scroll_motion.py`, `browser_actions.py` click convention). Rules:
+
+- `CAMOFOX_HUMANIZE` is a float (1.5), NEVER boolean True (hangs the
+  build: "humanize:maxTime is not a double"). Launch retries once with
+  humanize off on humanize errors.
+- Every `mouse.move` goes through `human_move()` (5s timeout guard).
+- Clicks/fills hover the element center first (`hover_locator`).
+- Read actions ease ~65% viewport before extraction (lazy-load).
+- Motion math stays pure in `motion.py` so `tests/test_motion.py` runs
+  browser-free. No recording/idle-drift loop here (video-agent only).
+
 ## Checks before push
 
 ```bash

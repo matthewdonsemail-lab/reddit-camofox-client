@@ -21,6 +21,14 @@ class PostsSearchAction:
                 "query": input_data.query,
                 "subreddit": input_data.subreddit,
             })
+            try:
+                from reddit_camofox_client.domain_camofox.constants import SCROLL_VIEWPORT_FRACTION
+                from reddit_camofox_client.domain_camofox.scroll import human_scroll_by
+
+                vp = page.viewport_size or {"height": 800}
+                await human_scroll_by(page, vp["height"] * SCROLL_VIEWPORT_FRACTION)
+            except Exception:
+                pass
             raw = await session.execute("reddit_search", {
                 "_page": page, "limit": input_data.limit,
                 "query": input_data.query, "subreddit": input_data.subreddit, "sort": input_data.sort,

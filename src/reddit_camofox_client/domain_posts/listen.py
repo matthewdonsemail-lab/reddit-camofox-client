@@ -55,6 +55,15 @@ class PostsListenAction:
         try:
             subreddit = subreddits[0]
             page = await session.open_surface("reddit_subreddit", {"subreddit": subreddit})
+            try:
+                # Human scroll triggers Reddit's lazy-loaded feed before extraction.
+                from reddit_camofox_client.domain_camofox.constants import SCROLL_VIEWPORT_FRACTION
+                from reddit_camofox_client.domain_camofox.scroll import human_scroll_by
+
+                vp = page.viewport_size or {"height": 800}
+                await human_scroll_by(page, vp["height"] * SCROLL_VIEWPORT_FRACTION)
+            except Exception:
+                pass
             title = await page.title()
             url = page.url
             jar = await session.cookies()
